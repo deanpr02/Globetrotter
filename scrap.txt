@@ -1,0 +1,196 @@
+(way[highway~"^(motorway|primary|secondary)$"]
+ (33.3255117,-112,33.55,-111.8);
+);
+(
+  ._;
+  node(w)(33.3255117,-112,33.55,-111.8);
+  );
+out;
+
+class Map{
+    constructor(){
+        this.nodes = {}
+        this.ways = []
+    }
+}
+
+class Node{
+    constructor(ref,lat,long){
+        this.ref = ref
+        this.lat = lat
+        this.long = long
+        this.weight = 0
+        this.distance = Infinity
+        this.next = null
+
+    }
+}
+
+class Way{
+    constructor(id){
+        //linked list of nodes
+        this.id = id
+        this.nextNode = null
+    }
+}
+
+class List{
+    constructor(){
+        this.head = null
+    }
+}
+
+
+let ctx
+let leftBound = -112
+let rightBound = -111.8
+let topBound = 33.55
+let bottomBound = 33.3255117
+let width = 0
+let height = 0
+let mapInfo = new Map()
+
+function drawInit(){
+    const canvas = document.getElementById("map-base")
+    //think of something better to do here
+    canvas.width = window.innerWidth
+    canvas.height = window.innerHeight
+    width = window.innerWidth
+    height = window.innerHeight
+    if(canvas.getContext){
+        ctx = canvas.getContext("2d")
+    }
+    fetchMapData(
+        `(way[highway~"^(motorway|primary|secondary)$"]
+    (${bottomBound},${leftBound},${topBound},${rightBound});
+    );
+    (
+    ._;
+    node(w)(${bottomBound},${leftBound},${topBound},${rightBound});
+    );
+    out;`
+    ).then(mapData => {
+        parseMapData(mapData)
+        drawMap()
+    })
+    .catch(error => console.error("Fetch error:", error));
+}
+
+//have a graph/adjacency list and then have the lines span out as they draw, so it draws all touching edges at the current edge and then spreads like a virus
+
+function fetchMapData(query) {
+    const url = 'https://overpass-api.de/api/interpreter';
+    return fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'text/plain',
+            'Accept': 'application/xml'
+        },
+        body: query
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`Network response was not ok: ${response.statusText}`);
+        }
+        return response.text();
+    });
+}
+
+function parseMapData(mapData){
+    const parser = new DOMParser()
+    const xmlDoc = parser.parseFromString(mapData,"application/xml")
+    parseNodes(xmlDoc)
+    parseWays(xmlDoc)
+}
+
+function parseNodes(parsedDoc){
+    const nodes = parsedDoc.getElementsByTagName("node")
+    for(let i = 0; i < nodes.length; i++){
+        const node = nodes[i]
+        const id = node.getAttribute("id")
+        const lat = node.getAttribute("lat")
+        const long = node.getAttribute("lon")
+
+        const tempNode = new Node(id,lat,long)
+        mapInfo.nodes[id] = tempNode
+    }
+}
+
+function parseWays(parsedDoc){
+    const ways = parsedDoc.getElementsByTagName("way")
+    for(let i = 0; i < ways.length; i++){
+        const way = ways[i]
+        const nodes = way.getElementsByTagName("nd")
+        const tempNodeList = []
+        for(let j = 0; j < nodes.length; j++){
+            const node = nodes[j]
+            tempNodeList.push(node.getAttribute('ref'))
+        }
+        mapInfo.ways.push(tempNodeList)
+    }
+}
+
+function convertToScreenCoords(lat,long,width,height){
+    const screenY = height - ((lat - bottomBound) / (topBound - bottomBound)) * height
+    const screenX = ((long - leftBound) / (rightBound - leftBound)) * width
+    return {screenX,screenY}
+}
+
+function drawMap(){
+    for(let i = 0; i < mapInfo.ways.length; i++){
+        const way = mapInfo.ways[i]
+        for(let j = 0; j < way.length-1; j++){
+            const startNodeId = way[j]
+            const nextNodeId = way[j+1]
+            const startNode = mapInfo.nodes[startNodeId]
+            const nextNode = mapInfo.nodes[nextNodeId]
+            if(startNode && nextNode){
+            let {screenX: startX,screenY: startY} = convertToScreenCoords(startNode.lat,startNode.long,width,height)
+            let {screenX: endX,screenY: endY} = convertToScreenCoords(nextNode.lat,nextNode.long,width,height)
+
+            //draw the line
+            ctx.strokeStyle = 'white'
+            ctx.lineWidth = 2
+            ctx.beginPath()
+            ctx.moveTo(startX,startY)
+            ctx.lineTo(endX,endY)
+            ctx.stroke()
+
+            }
+            
+        }
+    }
+}
+
+
+window.addEventListener("load",drawInit)
+
+
+
+
+#########################################################################################
+function drawMap(){
+    let delay = 100
+    Object.entries(mapInfo.graph).forEach(([key,objArr]) =>{
+        for(let i = 0; i < objArr.length; i++){
+            let startNode = mapInfo.nodes[key]
+            let nextNode = objArr[i].node
+            if(startNode && nextNode){
+                let {screenX: startX,screenY: startY} = convertToScreenCoords(startNode.lat,startNode.long,width,height)
+                let {screenX: endX,screenY: endY} = convertToScreenCoords(nextNode.lat,nextNode.long,width,height)
+    
+                //draw the line
+                setTimeout(() => {
+                ctx.strokeStyle = 'white'
+                ctx.lineWidth = 2
+                ctx.beginPath()
+                ctx.moveTo(startX,startY)
+                ctx.lineTo(endX,endY)
+                ctx.stroke()
+                
+                },delay)
+                }
+        }
+    })
+            
+}
