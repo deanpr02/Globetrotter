@@ -1,3 +1,1 @@
-let test = [1,2,3]
-let temp = test.shift()
-console.log(temp)
+const bruh = new PriorityQueue(10)
