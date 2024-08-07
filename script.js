@@ -35,7 +35,7 @@ class Board{
         this.srcNodeCanvas = null
         this.dstNodeCanvas = null
         this.srcInfoCanvas = null
-        this.dstNodeCanvas = null
+        this.dstInfoCanvas = null
     }
 }
 
@@ -255,13 +255,13 @@ function addTextToCanvas(canvas,textObj){
 }
 
 //for the display nodes, after the map algo is ran i want the node info to be displayed for both nodes and the distance of travel
-function displayNodeDetails(startNode,nodeInfo,type){
-    let {screenX: x,screenY: y} = convertToScreenCoords(startNode.lat,startNode.long,window.innerWidth,window.innerHeight)
+function displayNodeDetails(displayNode,nodeInfo,canvas){
+    let {screenX: x,screenY: y} = convertToScreenCoords(displayNode.lat,displayNode.long,window.innerWidth,window.innerHeight)
 
     //const canvasWidth = 100
     //const canvasHeight = 100
     let newCanvas = document.createElement('canvas')
-    newCanvas.id = "src-info-canvas"
+    newCanvas.id = `info-canvas`
     newCanvas.classList.add('info-canvas')
     newCanvas = addTextToCanvas(newCanvas,nodeInfo)
 
@@ -284,7 +284,8 @@ function displayNodeDetails(startNode,nodeInfo,type){
     //newCanvas.style.top = `${window.innerHeight/2}px`
     //newCanvas.style.left = `${window.innerWidth/2}px`
     mapBoard.container.appendChild(newCanvas)
-    if(type === "src"){
+    if(canvas === mapBoard.srcNodeCanvas){
+        //console.log(canvas)
         mapBoard.srcInfoCanvas = newCanvas
     }
     else{
@@ -296,7 +297,15 @@ function killNodeDetails(canvas){
     if(canvas){
         mapBoard.container.removeChild(canvas)
     }
-    return null
+    else{
+        return
+    }
+    if(canvas === mapBoard.srcInfoCanvas){
+        mapBoard.srcInfoCanvas = null
+    }
+    else{
+        mapBoard.dstInfoCanvas = null
+    }
 }
 
 function defineCanvasProps(xPos,yPos,canvas){
@@ -308,6 +317,66 @@ function defineCanvasProps(xPos,yPos,canvas){
     canvas.style.zIndex = '10'
     canvas.style.width = '15px'
     canvas.style.height = '15px'
+    canvas.setAttribute("draggable",true)
+}
+
+function moveNode(xPos,yPos,canvas){
+    canvas.style.top = `${yPos-7.5}px`
+    canvas.style.left = `${xPos-7.5}px`
+}
+
+function setDragHandler(canvas){
+    canvas.addEventListener("drag",(event)=>{
+        const mouseX = event.clientX
+        const mouseY = event.clientY
+        moveNode(mouseX,mouseY,canvas)
+    })
+}
+
+function setDragEndHandler(canvas){
+    canvas.addEventListener("dragend",(event)=>{
+        const mouseX = event.clientX
+        const mouseY = event.clientY
+        let {longitude:xPos,latitude:yPos} = convertToMapCoords(mouseX,mouseY,window.innerWidth,window.innerHeight)
+        
+        let minDist = Infinity
+        let closestNode = null
+        Object.values(mapInfo.nodes).forEach(node => {
+            const dist = getDistance(xPos,yPos,node.long,node.lat)
+            if(dist < minDist){
+                minDist = dist
+                closestNode = node
+            }
+        });
+        //used to be type === 'src
+        if(canvas === mapBoard.srcNodeCanvas){
+            mapInfo.startNode = closestNode
+            fetchAreaDetails(mapInfo.startNode.lat,mapInfo.startNode.long
+            ).then(locationDetails =>{
+                mapInfo.startInfo = parseDetails(locationDetails)
+                })
+        }
+        else{
+            mapInfo.endNode = closestNode
+            fetchAreaDetails(mapInfo.endNode.lat,mapInfo.endNode.long
+            ).then(locationDetails =>{
+                mapInfo.endInfo = parseDetails(locationDetails)
+                })
+        }
+        let {screenX: x,screenY: y} = convertToScreenCoords(closestNode.lat,closestNode.long,window.innerWidth,window.innerHeight)
+        moveNode(x,y,canvas)
+        
+    })
+}
+
+function setNodeInfoHandler(getNode,getInfo,getNodeCanvas,getInfoCanvas){
+    const nodeCanvas = getNodeCanvas()    
+    nodeCanvas.addEventListener("mouseover", (event) =>{
+        displayNodeDetails(getNode(),getInfo(),nodeCanvas)
+    })
+    nodeCanvas.addEventListener("mouseout",(event) => {
+        killNodeDetails(getInfoCanvas())
+    })
 }
 
 
@@ -329,10 +398,6 @@ function getNearestNode(event){
     });
     let {screenX: x,screenY: y} = convertToScreenCoords(closestNode.lat,closestNode.long,window.innerWidth,window.innerHeight)
     if(!srcLock){
-        if(mapBoard.srcNodeCanvas){
-            mapBoard.container.removeChild(mapBoard.srcNodeCanvas)
-            mapBoard.srcNodeCanvas = null
-        }
         mapInfo.startNode = closestNode
         const newCanvas = document.createElement('canvas')
         newCanvas.id = "src-canvas"
@@ -340,12 +405,16 @@ function getNearestNode(event){
         mapBoard.srcNodeCanvas = newCanvas
         mapBoard.container.appendChild(newCanvas)
         drawCircle(5,newCanvas)
+        srcLock = true
+        setDragHandler(mapBoard.srcNodeCanvas)
+        setDragEndHandler(mapBoard.srcNodeCanvas)
+        fetchAreaDetails(mapInfo.startNode.lat,mapInfo.startNode.long
+        ).then(locationDetails =>{
+            mapInfo.startInfo = parseDetails(locationDetails)
+            setNodeInfoHandler(() => mapInfo.startNode,() => mapInfo.startInfo,() => mapBoard.srcNodeCanvas,()=>mapBoard.srcInfoCanvas)
+    })
     }
     else if(!dstLock){
-        if(mapBoard.dstNodeCanvas){
-            mapBoard.container.removeChild(mapBoard.dstNodeCanvas)
-            mapBoard.dstNodeCanvas = null
-        }
         mapInfo.endNode = closestNode
         const newCanvas = document.createElement('canvas')
         newCanvas.id = "dst-canvas"
@@ -353,9 +422,14 @@ function getNearestNode(event){
         mapBoard.dstNodeCanvas = newCanvas
         mapBoard.container.appendChild(newCanvas)
         drawCircle(5,newCanvas)
-    }
-    else{
-        console.log("Yes!")
+        dstLock = true
+        setDragHandler(mapBoard.dstNodeCanvas)
+        setDragEndHandler(mapBoard.dstNodeCanvas)
+        fetchAreaDetails(mapInfo.endNode.lat,mapInfo.endNode.long
+        ).then(locationDetails =>{
+            mapInfo.endInfo = parseDetails(locationDetails)
+            setNodeInfoHandler(() => mapInfo.endNode,() => mapInfo.endInfo,() => mapBoard.dstNodeCanvas,()=>mapBoard.dstInfoCanvas)
+    })
     }
 }
 
@@ -458,6 +532,12 @@ function getDistance(srcX,srcY,dstX,dstY){
     return Math.sqrt(x + y)
 }
 
+function getRandomInt(min, max) {
+    min = Math.ceil(min);
+    max = Math.floor(max);
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
 function addEdge(startId,endId,key){
     let startNode = mapInfo.nodes[startId]
     let endNode = mapInfo.nodes[endId]
@@ -554,59 +634,14 @@ window.addEventListener("keydown",(event) =>{
     switch(event.key){
         //lock selected nodes in place
         case "Enter":
-            if(!srcLock && mapInfo.startNode){
-                srcLock = true
-                fetchAreaDetails(mapInfo.startNode.lat,mapInfo.startNode.long
-                ).then(locationDetails =>{
-                    mapInfo.startInfo = parseDetails(locationDetails)
-                    mapBoard.srcNodeCanvas.addEventListener("mouseover", (event) =>{
-                        displayNodeDetails(mapInfo.startNode,mapInfo.startInfo,'src')
-                    })
-                    mapBoard.srcNodeCanvas.addEventListener("mouseout",(event) => {
-                        mapBoard.srcInfoCanvas = killNodeDetails(mapBoard.srcInfoCanvas)
-                    })
-                })
-                //add mouseover eventlistener to srccanvas to display street information of node
-        
-            }
-            else if(!dstLock && mapInfo.endNode){
-                dstLock = true
-                fetchAreaDetails(mapInfo.endNode.lat,mapInfo.endNode.long
-                ).then(locationDetails => {
-                    mapInfo.endInfo = parseDetails(locationDetails)
-                })
-                //event listeners to display node information
-                mapBoard.dstNodeCanvas.addEventListener("mouseover", (event) =>{
-                    displayNodeDetails(mapInfo.endNode,mapInfo.endInfo,'dst')
-                })
-                mapBoard.dstNodeCanvas.addEventListener("mouseout",(event) => {
-                    mapBoard.dstInfoCanvas = killNodeDetails(mapBoard.dstInfoCanvas)
-                })
+            if(srcLock && dstLock){
                 aStar(mapInfo.startNode,mapInfo.endNode)
-                //execute A* algorithm after end node has been locked in
+                //TODO:
+                //remove mouse over events
+                //display the nodes info indefinitely without covering the shortest path
             }
             break
-        case "Escape":
-            if(dstLock){
-                dstLock = false
-                mapBoard.container.removeChild(mapBoard.dstNodeCanvas)
-                mapBoard.dstNodeCanvas = null
-                if(mapBoard.dstInfoCanvas){
-                    mapBoard.container.removeChild(mapBoard.dstInfoCanvas)
-                    mapBoard.dstInfoCanvas = null
-                }
-                //remove the canvas for it
-            }
-            else if(srcLock){
-                srcLock = false
-                mapBoard.container.removeChild(mapBoard.srcNodeCanvas)
-                mapBoard.srcNodeCanvas = null
-                if(mapBoard.srcInfoCanvas){
-                    mapBoard.container.removeChild(mapBoard.srcInfoCanvas)
-                    mapBoard.srcInfoCanvas = null
-                }
-            }
-            break
+        //TODO: Case R: restart the map fresh
     }
 })
 

@@ -194,3 +194,51 @@ function drawMap(){
     })
             
 }
+
+function getNearestNode(event){  
+    if(!mapDrawn){
+        return
+    }
+    let screenX = event.clientX
+    let screenY = event.clientY
+    let {longitude:xPos,latitude:yPos} = convertToMapCoords(screenX,screenY,window.innerWidth,window.innerHeight)
+    let minDist = Infinity
+    let closestNode = null
+    Object.values(mapInfo.nodes).forEach(node => {
+        const dist = getDistance(xPos,yPos,node.long,node.lat)
+        if(dist < minDist){
+            minDist = dist
+            closestNode = node
+        }
+    });
+    let {screenX: x,screenY: y} = convertToScreenCoords(closestNode.lat,closestNode.long,window.innerWidth,window.innerHeight)
+    if(!srcLock){
+        if(mapBoard.srcNodeCanvas){
+            mapBoard.container.removeChild(mapBoard.srcNodeCanvas)
+            mapBoard.srcNodeCanvas = null
+        }
+        mapInfo.startNode = closestNode
+        const newCanvas = document.createElement('canvas')
+        newCanvas.id = "src-canvas"
+        defineCanvasProps(x,y,newCanvas)
+        mapBoard.srcNodeCanvas = newCanvas
+        mapBoard.container.appendChild(newCanvas)
+        drawCircle(5,newCanvas)
+    }
+    else if(!dstLock){
+        if(mapBoard.dstNodeCanvas){
+            mapBoard.container.removeChild(mapBoard.dstNodeCanvas)
+            mapBoard.dstNodeCanvas = null
+        }
+        mapInfo.endNode = closestNode
+        const newCanvas = document.createElement('canvas')
+        newCanvas.id = "dst-canvas"
+        defineCanvasProps(x,y,newCanvas)
+        mapBoard.dstNodeCanvas = newCanvas
+        mapBoard.container.appendChild(newCanvas)
+        drawCircle(5,newCanvas)
+    }
+    else{
+        console.log("Yes!")
+    }
+}
