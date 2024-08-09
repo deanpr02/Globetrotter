@@ -4,6 +4,13 @@ import { MinHeap } from './heap.js'
 //Add a callback function for when the screen changes size so i can update the location of the src/dst node selections
 
 
+/* TEST BOUND LAT/LON 
+let leftBound = -112
+let rightBound = -111.8
+let topBound = 33.55
+let bottomBound = 33.3255117
+*/
+
 class Map{
     constructor(){
         this.nodes = {}
@@ -40,8 +47,7 @@ class Board{
     }
 }
 
-
-let ctxMap
+let dragMap
 let srcLock = false
 let dstLock = false
 let leftBound = -112
@@ -55,18 +61,41 @@ let mapBoard = new Board()
 let mapDrawn = false
 //let mapGraph = new Graph()
 
+function drawDragMap(){
+    dragMap = L.map('map').setView([51.505,-0.09],13)
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(dragMap);
+}
+
+function lockLocation(){
+    mapBoard.container.removeChild(document.getElementById('map'))
+    const bounds = dragMap.getBounds()
+    leftBound = bounds.getWest()
+    rightBound = bounds.getEast()
+    topBound = bounds.getNorth()
+    bottomBound = bounds.getSouth()
+    console.log(`bottom: ${bottomBound}`)
+    console.log(`left: ${leftBound}`)
+    console.log(`top: ${topBound}`)
+    console.log(`right: ${rightBound}`)
+    drawInit()
+}
+
+
 function drawInit(){
     //canvas = document.getElementById("map-base")
     //think of something better to do here
-    mapBoard.mapCanvas.width = window.innerWidth
-    mapBoard.mapCanvas.height = window.innerHeight
+    let mapCanvas = document.createElement('canvas')
+    mapCanvas.id = 'map-base'
+    mapCanvas.width = window.innerWidth
+    mapCanvas.height = window.innerHeight
+    mapBoard.container.appendChild(mapCanvas)
+    mapBoard.mapCanvas = mapCanvas
     //canvas.width = window.innerWidth
     //canvas.height = window.innerHeight
     canvasWidth = window.innerWidth
     canvasHeight = window.innerHeight
-    if(mapBoard.mapCanvas.getContext){
-        ctxMap = mapBoard.mapCanvas.getContext("2d")
-    }
     fetchMapData(
         `(way[highway~"^(motorway|motorway_link|primary|secondary)$"]
     (${bottomBound},${leftBound},${topBound},${rightBound});
@@ -443,7 +472,6 @@ function convertToMapCoords(xPos,yPos,width,height){
 
 function drawPath(canvas,startNode,endNode,color,delay){
     const ctx = canvas.getContext('2d')
-    console.log(canvas)
     if(startNode && endNode){
         let {screenX: startX,screenY: startY} = convertToScreenCoords(startNode.lat,startNode.long,canvasWidth,canvasHeight)
         let {screenX: endX,screenY: endY} = convertToScreenCoords(endNode.lat,endNode.long,canvasWidth,canvasHeight)
@@ -608,7 +636,7 @@ function aStar(startNode,endNode){
 
 
 
-window.addEventListener("load",drawInit)
+window.addEventListener("load",drawDragMap)
 window.addEventListener("click",getNearestNode)
 window.addEventListener("keydown",(event) =>{
     switch(event.key){
@@ -622,6 +650,9 @@ window.addEventListener("keydown",(event) =>{
             }
             break
         //TODO: Case R: restart the map fresh
+        case "r":
+            lockLocation()
+            break
     }
 })
 window.addEventListener("resize",(event)=>{
