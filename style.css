@@ -28,5 +28,18 @@ canvas {
 .info-canvas{
     background-color: red;
     position:absolute;
+    z-index: 11;
+}
+
+.algo-canvas{
+    background-color: transparent;
+    width: 100%;
+    height: 100%;
+    position:absolute;
     z-index: 10;
+}
+
+.point-canvas{
+    background-color:transparent;
+    z-index:11;
 }

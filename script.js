@@ -32,38 +32,11 @@ class Board{
     constructor(){
         this.container = document.getElementById('container')
         this.mapCanvas = document.getElementById('map-base')
+        this.algoContainer = null
         this.srcNodeCanvas = null
         this.dstNodeCanvas = null
         this.srcInfoCanvas = null
         this.dstInfoCanvas = null
-    }
-}
-
-class Way{
-    constructor(id){
-        //linked list of nodes
-        this.id = id
-        this.nextNode = null
-    }
-}
-
-class List{
-    constructor(){
-        this.head = null
-    }
-}
-
-class Vertex{
-    constructor(id){
-        this.id = id
-        this.weight = 0
-    }
-}
-
-class Graph{
-    constructor(){
-        this.adjList = {}
-
     }
 }
 
@@ -75,8 +48,8 @@ let leftBound = -112
 let rightBound = -111.8
 let topBound = 33.55
 let bottomBound = 33.3255117
-let width = 0
-let height = 0
+let canvasWidth = 0
+let canvasHeight = 0
 let mapInfo = new Map()
 let mapBoard = new Board()
 let mapDrawn = false
@@ -89,8 +62,8 @@ function drawInit(){
     mapBoard.mapCanvas.height = window.innerHeight
     //canvas.width = window.innerWidth
     //canvas.height = window.innerHeight
-    width = window.innerWidth
-    height = window.innerHeight
+    canvasWidth = window.innerWidth
+    canvasHeight = window.innerHeight
     if(mapBoard.mapCanvas.getContext){
         ctxMap = mapBoard.mapCanvas.getContext("2d")
     }
@@ -272,7 +245,7 @@ function displayNodeDetails(displayNode,nodeInfo,canvas){
     else{
         newCanvas.style.left = `${x}px`
     }
-    if(window.innerHeight - y < window.innerWidth / 2){
+    if(window.innerHeight - y < window.innerHeight / 2){
         newCanvas.style.top = `${y-newCanvas.height-5}px`
     }
     else{
@@ -285,7 +258,6 @@ function displayNodeDetails(displayNode,nodeInfo,canvas){
     //newCanvas.style.left = `${window.innerWidth/2}px`
     mapBoard.container.appendChild(newCanvas)
     if(canvas === mapBoard.srcNodeCanvas){
-        //console.log(canvas)
         mapBoard.srcInfoCanvas = newCanvas
     }
     else{
@@ -309,15 +281,33 @@ function killNodeDetails(canvas){
 }
 
 function defineCanvasProps(xPos,yPos,canvas){
+    canvas.classList.add('point-canvas')
     canvas.width = 15
     canvas.height = 15
     canvas.style.position = 'absolute'
     canvas.style.top = `${yPos-7.5}px`
     canvas.style.left = `${xPos-7.5}px`
-    canvas.style.zIndex = '10'
+    canvas.style.zIndex = '11'
     canvas.style.width = '15px'
     canvas.style.height = '15px'
     canvas.setAttribute("draggable",true)
+}
+
+function createCanvas(){
+    const newCanvas = document.createElement('canvas')
+    newCanvas.id = `algo-canvas`
+    newCanvas.classList.add('algo-canvas')
+    newCanvas.width = window.innerWidth
+    newCanvas.height = window.innerHeight
+    mapBoard.algoContainer.appendChild(newCanvas)
+    return newCanvas
+}
+
+function generatePlane(){
+    const newDiv = document.createElement('div')
+    newDiv.id = 'algo-div'
+    mapBoard.algoContainer = newDiv
+    mapBoard.container.appendChild(newDiv)
 }
 
 function moveNode(xPos,yPos,canvas){
@@ -398,12 +388,13 @@ function getNearestNode(event){
     });
     let {screenX: x,screenY: y} = convertToScreenCoords(closestNode.lat,closestNode.long,window.innerWidth,window.innerHeight)
     if(!srcLock){
+        generatePlane()
         mapInfo.startNode = closestNode
         const newCanvas = document.createElement('canvas')
         newCanvas.id = "src-canvas"
         defineCanvasProps(x,y,newCanvas)
         mapBoard.srcNodeCanvas = newCanvas
-        mapBoard.container.appendChild(newCanvas)
+        mapBoard.algoContainer.appendChild(newCanvas)
         drawCircle(5,newCanvas)
         srcLock = true
         setDragHandler(mapBoard.srcNodeCanvas)
@@ -420,7 +411,7 @@ function getNearestNode(event){
         newCanvas.id = "dst-canvas"
         defineCanvasProps(x,y,newCanvas)
         mapBoard.dstNodeCanvas = newCanvas
-        mapBoard.container.appendChild(newCanvas)
+        mapBoard.algoContainer.appendChild(newCanvas)
         drawCircle(5,newCanvas)
         dstLock = true
         setDragHandler(mapBoard.dstNodeCanvas)
@@ -430,6 +421,11 @@ function getNearestNode(event){
             mapInfo.endInfo = parseDetails(locationDetails)
             setNodeInfoHandler(() => mapInfo.endNode,() => mapInfo.endInfo,() => mapBoard.dstNodeCanvas,()=>mapBoard.dstInfoCanvas)
     })
+    }
+    else{
+        mapBoard.container.removeChild(mapBoard.algoContainer)
+        srcLock = false
+        dstLock = false
     }
 }
 
@@ -445,18 +441,20 @@ function convertToMapCoords(xPos,yPos,width,height){
     return {longitude,latitude}
 }
 
-function drawPath(startNode,endNode,color,delay){
+function drawPath(canvas,startNode,endNode,color,delay){
+    const ctx = canvas.getContext('2d')
+    console.log(canvas)
     if(startNode && endNode){
-        let {screenX: startX,screenY: startY} = convertToScreenCoords(startNode.lat,startNode.long,width,height)
-        let {screenX: endX,screenY: endY} = convertToScreenCoords(endNode.lat,endNode.long,width,height)
+        let {screenX: startX,screenY: startY} = convertToScreenCoords(startNode.lat,startNode.long,canvasWidth,canvasHeight)
+        let {screenX: endX,screenY: endY} = convertToScreenCoords(endNode.lat,endNode.long,canvasWidth,canvasHeight)
         //draw the line
     setTimeout(() => {
-        ctxMap.strokeStyle = color
-        ctxMap.lineWidth = 2
-        ctxMap.beginPath()
-        ctxMap.moveTo(startX,startY)
-        ctxMap.lineTo(endX,endY)
-        ctxMap.stroke()
+        ctx.strokeStyle = color
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.moveTo(startX,startY)
+        ctx.lineTo(endX,endY)
+        ctx.stroke()
         },delay)
     }
 }
@@ -468,32 +466,12 @@ function drawCircle(radius,canvas){
     ctxCircle.fillStyle = 'red'
     ctxCircle.arc(7.5,7.5,radius,0,2*Math.PI)
     ctxCircle.fill()
+
+    ctxCircle.lineWidth = 0.5
+    ctxCircle.strokeStyle = 'white'
+    ctxCircle.stroke()
 }
 
-
-
-function drawMaps(){
-    let startKey = "3525611398"
-    let startNode = mapInfo.nodes[startKey]
-    let nodeList = []
-    let drawnNodes = new Set()
-    let drawnPaths = new Set()
-    nodeList.push(startNode)
-    drawnNodes.add(startNode.ref)
-    while(nodeList.length > 0){
-        startNode = nodeList.shift()
-        let neighborNodes = mapInfo.graph[startNode.ref]
-        for(let i = 0; i < neighborNodes.length; i++){
-            let nextNode = neighborNodes[i].node
-            if(!drawnNodes.has(nextNode.ref)){
-                drawnNodes.add(nextNode.ref)
-                nodeList.push(nextNode)
-            }
-            drawPath(startNode,nextNode,'white',100)
-
-        }
-    }
-}
 
 function drawMap(startNode) {
     let drawnNodes = new Set();
@@ -510,7 +488,7 @@ function drawMap(startNode) {
             let pathKey = `${currentNode.ref}-${nextNode.ref}`;
             let reversePathKey = `${nextNode.ref}-${currentNode.ref}`;
             if (!drawnPaths.has(pathKey) && !drawnPaths.has(reversePathKey)) {
-                drawPath(currentNode, nextNode,'white',100)
+                drawPath(mapBoard.mapCanvas,currentNode, nextNode,'white',100)
                 drawnPaths.add(pathKey);
                 drawnPaths.add(reversePathKey)
             }
@@ -568,7 +546,8 @@ function initializeDistances(){
     })
 }
 
-function drawShortestPath(){
+function drawShortestPath(canvas){
+    const ctx = canvas.getContext('2d')
     let path = []
     let node = mapInfo.endNode
     while(node){
@@ -577,7 +556,7 @@ function drawShortestPath(){
     }
     path.reverse()
     for(let i = 0; i < path.length-1; i++){
-        drawPath(path[i],path[i+1],'red',100)
+        drawPath(canvas,path[i],path[i+1],'red',100)
     }
 
 }
@@ -594,6 +573,7 @@ function aStar(startNode,endNode){
     //Visited Set:  to ensure avoidance of repeated visiting of nodes for optimization
     const queue = new MinHeap()
     const visited = new Set()
+    const algoCanvas = createCanvas()
 
     mapInfo.nodes[startNode.ref].distance = 0
     queue.add(mapInfo.nodes[startNode.ref])
@@ -615,11 +595,11 @@ function aStar(startNode,endNode){
                 neighbor.previous = current.ref
                 queue.update(neighbor,newDist + potential(neighbor))
             } 
-            drawPath(current,neighbor,`rgb(${85},${85},${85})`,100)
+            drawPath(algoCanvas,current,neighbor,`rgb(${85},${85},${85})`,100)
             //neighbor.previous = current.ref
         }
     }
-    drawShortestPath()
+    drawShortestPath(algoCanvas)
 }
 
 
@@ -643,5 +623,13 @@ window.addEventListener("keydown",(event) =>{
             break
         //TODO: Case R: restart the map fresh
     }
+})
+window.addEventListener("resize",(event)=>{
+    canvasHeight = window.innerHeight
+    canvasWidth = window.innerWidth
+    let {screenX: startX,screenY: startY} = convertToScreenCoords(mapInfo.startNode.lat,mapInfo.startNode.long,window.innerWidth,window.innerHeight)
+    let {screenX: endX,screenY: endY} = convertToScreenCoords(mapInfo.endNode.lat,mapInfo.endNode.long,window.innerWidth,window.innerHeight)
+    moveNode(startX,startY,mapBoard.srcNodeCanvas)
+    moveNode(endX,endY,mapBoard.dstNodeCanvas)
 })
 
