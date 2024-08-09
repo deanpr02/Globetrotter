@@ -97,7 +97,7 @@ function drawInit(){
     canvasWidth = window.innerWidth
     canvasHeight = window.innerHeight
     fetchMapData(
-        `(way[highway~"^(motorway|motorway_link|primary|secondary)$"]
+        `(way[highway~"^(motorway|motorway_link|primary|secondary|trunk)$"]
     (${bottomBound},${leftBound},${topBound},${rightBound});
     );
     (
