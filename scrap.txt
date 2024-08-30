@@ -242,3 +242,58 @@ function getNearestNode(event){
         console.log("Yes!")
     }
 }
+
+function parseWays(parsedDoc){
+    const ways = parsedDoc.getElementsByTagName("way")
+    let index = 0
+    for(let i = 0; i < ways.length; i++){
+        const way = ways[i]
+        const nodes = way.getElementsByTagName("nd")
+        for(let j = 0; j < nodes.length-1; j++){
+            const src = nodes[j]
+            const dst = nodes[j+1]
+            addEdge(src.getAttribute('ref'),dst.getAttribute('ref'),index)
+            index += 1
+        }
+    }
+}
+
+
+function douglasPeucker(nodes, epsilon){
+    //console.log(mapInfo.nodes["5742573759"])
+    if(nodes.length < 3){
+        return nodes
+    }
+    let startNode = mapInfo.nodes[nodes[0].getAttribute('ref')]
+    let endNode = mapInfo.nodes[nodes[nodes.length-1].getAttribute('ref')]
+   
+    if(!startNode || !endNode){
+        return nodes
+    }
+    const vX = endNode.long - startNode.long
+    const vY = endNode.lat - startNode.lat
+    let v = [vX,vY]
+    nodes = Array.from(nodes)
+    while(true){
+        let maxD = 0
+        let prunedNode = -1
+        for(let x = 1; x < nodes.length-1; x++){
+            const node = mapInfo.nodes[nodes[x].getAttribute('ref')]
+            //distance function
+            const dist = orthogonalDistance(v,node,startNode)
+            if(dist > maxD){
+                maxD = dist
+                prunedNode = x
+            }
+        }
+        if(prunedNode == -1 || maxD <= epsilon){
+            break
+        }
+        else{
+            nodes.splice(prunedNode,1)
+            console.log("hello")
+        }
+    }
+    return nodes
+
+}

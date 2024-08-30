@@ -19,6 +19,9 @@ class Map{
         this.endNode = null
         this.startInfo = null
         this.endInfo = null
+        //this array holds the references to all the pruned nodes and the nodes located after it in the way, so it can inherit the neighbors of the pruned node
+        //after full parsing of the ways (to avoid loss of node dependencies)
+        this.prunedNodes = []
     }
 }
 
@@ -75,11 +78,22 @@ function lockLocation(){
     rightBound = bounds.getEast()
     topBound = bounds.getNorth()
     bottomBound = bounds.getSouth()
-    console.log(`bottom: ${bottomBound}`)
-    console.log(`left: ${leftBound}`)
-    console.log(`top: ${topBound}`)
-    console.log(`right: ${rightBound}`)
+    console.log(`${getDistance(leftBound,topBound,rightBound,bottomBound)}`)
     drawInit()
+}
+
+function adjustZoomLevel(){
+    const zoomLevel = getDistance(leftBound,topBound,rightBound,bottomBound)
+    let statement
+    statement = `(way[highway~"^(motorway|motorway_link|primary|secondary|trunk)$"]
+    (${bottomBound},${leftBound},${topBound},${rightBound});
+    );
+    (
+    ._;
+    node(w)(${bottomBound},${leftBound},${topBound},${rightBound});
+    );
+    out;`
+    return statement
 }
 
 
@@ -96,15 +110,18 @@ function drawInit(){
     //canvas.height = window.innerHeight
     canvasWidth = window.innerWidth
     canvasHeight = window.innerHeight
+    const fetchStatement = adjustZoomLevel()
+    console.log(fetchStatement)
     fetchMapData(
-        `(way[highway~"^(motorway|motorway_link|primary|secondary|trunk)$"]
-    (${bottomBound},${leftBound},${topBound},${rightBound});
-    );
-    (
-    ._;
-    node(w)(${bottomBound},${leftBound},${topBound},${rightBound});
-    );
-    out;`
+        //`(way[highway~"^(motorway|motorway_link|primary|secondary|trunk)$"]
+    //(${bottomBound},${leftBound},${topBound},${rightBound});
+    //);
+    //(
+    //._;
+    //node(w)(${bottomBound},${leftBound},${topBound},${rightBound});
+    //);
+    //out;`
+    fetchStatement
     ).then(mapData => {
         parseMapData(mapData)
         const nodeCount = Object.keys(mapInfo.nodes).length-1
@@ -169,6 +186,7 @@ function parseNodes(parsedDoc){
         const tempNode = new Node(id,lat,long)
         mapInfo.nodes[id] = tempNode
     }
+    //console.log(Object.keys(mapInfo.nodes).length)
 }
 
 function parseWay(parsedDoc){
@@ -188,9 +206,22 @@ function parseWay(parsedDoc){
 function parseWays(parsedDoc){
     const ways = parsedDoc.getElementsByTagName("way")
     let index = 0
+    let total = 0
     for(let i = 0; i < ways.length; i++){
         const way = ways[i]
-        const nodes = way.getElementsByTagName("nd")
+        let nodes = way.getElementsByTagName("nd")
+        nodes = Array.from(nodes)
+        total += nodes.length
+        //delete this \/
+        for(let k = 0; k < nodes.length; k++){
+            const temp = nodes[k].getAttribute('ref')
+            if(!mapInfo.nodes[temp])
+                nodes.splice(k,1)
+        }
+        //execute the douglas-pecker algorithm here
+        //const prunedNodes = douglasPeucker(nodes,0.001)
+        //douglasPeucker(nodes,0.0001)
+        //try having a function that inherits the neighbors from the other node
         for(let j = 0; j < nodes.length-1; j++){
             const src = nodes[j]
             const dst = nodes[j+1]
@@ -198,7 +229,12 @@ function parseWays(parsedDoc){
             index += 1
         }
     }
+    //console.log(Object.keys(mapInfo.graph).length)
+    //optimizeGraph()
+    //console.log(Object.keys(mapInfo.graph).length)
+    //console.log(Object.keys(mapInfo.nodes).length)
 }
+
 
 function parseDetails(locationData){
     const acceptableTags = ["city","state","country","county","suburb","road","postcode","postcode","town","village","state_district"]
@@ -630,6 +666,118 @@ function aStar(startNode,endNode){
     drawShortestPath(algoCanvas)
 }
 
+function dotProduct(v,w){
+    return v[0]*w[0] + v[1]*w[1]
+}
+
+function orthogonalDistance(v,node,start){
+    const wX = node.long - start.long
+    const wY = node.lat - start.lat
+    let w = [wX,wY]
+    const t = (dotProduct(v,w) / (dotProduct(v,v)))
+    const cX = Number(node.long) + (t * v[0])
+    const cY = Number(node.lat) + (t * v[1])
+    return getDistance(Number(node.long),Number(node.lat),cX,cY)
+}
+
+
+function douglasPeucker(nodes, epsilon){
+    //console.log(mapInfo.nodes["5742573759"])
+    if(nodes.length < 3){
+        //return nodes
+        return
+    }
+    let startNode = mapInfo.nodes[nodes[0].getAttribute('ref')]
+    let endNode = mapInfo.nodes[nodes[nodes.length-1].getAttribute('ref')]
+   
+    if(!startNode || !endNode){
+        //return nodes
+        return
+    }
+    const vX = endNode.long - startNode.long
+    const vY = endNode.lat - startNode.lat
+    let v = [vX,vY]
+    let tempNodes = Array.from(nodes)
+    while(true){
+        let maxD = 0
+        let prunedIndex = -1
+        for(let x = 1; x < tempNodes.length-1; x++){
+            const node = mapInfo.nodes[tempNodes[x].getAttribute('ref')]
+            //distance function
+            const dist = orthogonalDistance(v,node,startNode)
+            if(dist > maxD && dist > epsilon){
+                maxD = dist
+                prunedIndex = x
+            }
+        }
+        if(prunedIndex === -1 || maxD <= epsilon){
+            break
+        }
+        else{
+            //Add a potential node to be removed for later processing
+            tempNodes.splice(prunedIndex,1)
+            const prunedNode = nodes[prunedIndex].getAttribute('ref')
+            const nextNode = nodes[prunedIndex+1].getAttribute('ref')
+            const prevNode = nodes[prunedIndex-1].getAttribute('ref')
+            mapInfo.prunedNodes.push([prunedNode,prevNode,nextNode])
+
+        }
+    }
+    //return nodes
+
+}
+
+
+function removeEdge(prunedRef,modifyRef){
+    const neighbors = mapInfo.graph[modifyRef]
+    for(let i = 0; i < neighbors.length; i++){
+        if(neighbors[i].node.ref === prunedRef){
+            mapInfo.graph[modifyRef].splice(i,1)
+        }
+    }
+}
+
+//prunedNodes -> [prunedNode,prevNode,nextNode]
+function optimizeGraph(){
+    const prunedQueue = mapInfo.prunedNodes
+    for(let i = 0; i < prunedQueue.length; i++){
+        const prunedRef = prunedQueue[i][0]
+        const prevRef = prunedQueue[i][1]
+        const nextRef = prunedQueue[i][2]
+
+        if(!mapInfo.graph[prunedRef]) continue
+
+        const neighbors = mapInfo.graph[prunedRef]
+        if(neighbors.length > 2){
+            continue
+        }
+        //otherwise we are cleared for removal since there are no other neighbors to account for
+        addEdge(prevRef,nextRef)
+        removeEdge(prunedRef,prevRef)
+        removeEdge(prunedRef,nextRef)
+        //removeEdge(prevRef,prunedRef)
+        //removeEdge(nextRef,prunedRef)
+        //delete mapInfo.graph[prunedRef]
+        //delete mapInfo.nodes[prunedRef]
+    }
+}
+
+
+function optimizedGraph(){
+    const prunedQueue = mapInfo.prunedNodes
+    for(let i = 0; i < prunedQueue.length; i++){
+        const prunedRef = prunedQueue[i][0]
+        const inheritRef = prunedQueue[i][1]
+        const neighbors = mapInfo.graph[prunedRef]
+        for(let j = 0; j < neighbors.length; j++){
+            removeEdge(prunedRef,neighbors[j].node.ref)
+            addEdge(inheritRef,neighbors[j].node.ref)
+            
+        }
+        //mapInfo.graph[prunedRef].length = 0
+        delete mapInfo.graph[prunedRef]
+    }
+}
 
 
 
