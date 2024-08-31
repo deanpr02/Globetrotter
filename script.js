@@ -62,8 +62,10 @@ let canvasHeight = 0
 let mapInfo = new Map()
 let mapBoard = new Board()
 let mapDrawn = false
-//let mapGraph = new Graph()
 
+/* 
+Creates a draggable map and displays it
+*/
 function drawDragMap(){
     dragMap = L.map('map').setView([51.505,-0.09],13)
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -71,6 +73,9 @@ function drawDragMap(){
     }).addTo(dragMap);
 }
 
+/*
+Get the latitude/longitude bounds based on the view range of the draggable map
+*/
 function lockLocation(){
     mapBoard.container.removeChild(document.getElementById('map'))
     const bounds = dragMap.getBounds()
@@ -82,6 +87,12 @@ function lockLocation(){
     drawInit()
 }
 
+/*
+Based on how far out the map is zoomed, query for smaller roads, such as secondary/tertiary roads
+
+Return:
+    query statement for way/node information
+*/
 function adjustZoomLevel(){
     const zoomLevel = getDistance(leftBound,topBound,rightBound,bottomBound)
     let statement
@@ -96,44 +107,39 @@ function adjustZoomLevel(){
     return statement
 }
 
-
+/*
+Initialize canvas settings, query road details, and draw the map
+*/
 function drawInit(){
-    //canvas = document.getElementById("map-base")
-    //think of something better to do here
     let mapCanvas = document.createElement('canvas')
     mapCanvas.id = 'map-base'
     mapCanvas.width = window.innerWidth
     mapCanvas.height = window.innerHeight
     mapBoard.container.appendChild(mapCanvas)
     mapBoard.mapCanvas = mapCanvas
-    //canvas.width = window.innerWidth
-    //canvas.height = window.innerHeight
     canvasWidth = window.innerWidth
     canvasHeight = window.innerHeight
     const fetchStatement = adjustZoomLevel()
-    console.log(fetchStatement)
     fetchMapData(
-        //`(way[highway~"^(motorway|motorway_link|primary|secondary|trunk)$"]
-    //(${bottomBound},${leftBound},${topBound},${rightBound});
-    //);
-    //(
-    //._;
-    //node(w)(${bottomBound},${leftBound},${topBound},${rightBound});
-    //);
-    //out;`
-    fetchStatement
+                fetchStatement
     ).then(mapData => {
         parseMapData(mapData)
         const nodeCount = Object.keys(mapInfo.nodes).length-1
         const randomInt = Math.floor(Math.random() * nodeCount)
         drawMap(mapInfo.nodes[Object.keys(mapInfo.nodes)[randomInt]])
-        //mapDrawn = true
     })
     .catch(error => console.error("Fetch error:", error));
 }
 
-//have a graph/adjacency list and then have the lines span out as they draw, so it draws all touching edges at the current edge and then spreads like a virus
+/*
+Uses the turbo overpass API to query for road/highway information between some bounding box
 
+Args:
+    query -> string
+
+Return:
+    way and node information for an area -> XML
+*/
 function fetchMapData(query) {
     const url = 'https://overpass-api.de/api/interpreter';
     return fetch(url, {
@@ -152,6 +158,16 @@ function fetchMapData(query) {
     });
 }
 
+/*
+Uses the nominatim API to get the street information (City, Country, Street Name, etc.) for a specific lat/lon
+
+Args:
+    lat -> float
+    lon -> float
+
+Return:
+    List of identifying information for a specific latitude/longitude -> XML
+*/
 function fetchAreaDetails(lat,lon){
     const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}`
     return fetch(url, {
@@ -168,6 +184,12 @@ function fetchAreaDetails(lat,lon){
     });
 }
 
+/*
+Parse the nodes and ways to be able to store it in a graph data structure
+
+Args:
+    mapData -> XML
+*/
 function parseMapData(mapData){
     const parser = new DOMParser()
     const xmlDoc = parser.parseFromString(mapData,"application/xml")
@@ -175,6 +197,12 @@ function parseMapData(mapData){
     parseWays(xmlDoc)
 }
 
+/*
+Gets a list of all of the nodes that the map/ways consist of
+
+Args:
+    parsedDoc -> XML Dcoument
+*/
 function parseNodes(parsedDoc){
     const nodes = parsedDoc.getElementsByTagName("node")
     for(let i = 0; i < nodes.length; i++){
@@ -189,20 +217,12 @@ function parseNodes(parsedDoc){
     //console.log(Object.keys(mapInfo.nodes).length)
 }
 
-function parseWay(parsedDoc){
-    const ways = parsedDoc.getElementsByTagName("way")
-    for(let i = 0; i < ways.length; i++){
-        const way = ways[i]
-        const nodes = way.getElementsByTagName("nd")
-        const tempNodeList = []
-        for(let j = 0; j < nodes.length; j++){
-            const node = nodes[j]
-            tempNodeList.push(node.getAttribute('ref'))
-        }
-        mapInfo.ways.push(tempNodeList)
-    }
-}
+/*
+Gets all of the ways and the nodes in it to create an undirected adjacency list. The graph will hold the road information
 
+Args:
+    parsedDoc -> XML Document
+*/
 function parseWays(parsedDoc){
     const ways = parsedDoc.getElementsByTagName("way")
     let index = 0
@@ -229,13 +249,18 @@ function parseWays(parsedDoc){
             index += 1
         }
     }
-    //console.log(Object.keys(mapInfo.graph).length)
     //optimizeGraph()
-    //console.log(Object.keys(mapInfo.graph).length)
-    //console.log(Object.keys(mapInfo.nodes).length)
 }
 
+/*
+Gets the details of a specific location that meets a list of accepted tags
 
+Args:
+    locationData -> XML Document
+
+Return:
+    an object containing information about some location (lat/lon) -> Object
+*/
 function parseDetails(locationData){
     const acceptableTags = ["city","state","country","county","suburb","road","postcode","postcode","town","village","state_district"]
     const parser = new DOMParser()
@@ -253,6 +278,16 @@ function parseDetails(locationData){
     return locationObj
 }
 
+/*
+Once a node is selected on the map, when the user mouses over it this function will display information about the node
+
+Args:
+    canvas -> HTMLCanvasElement
+    textObj -> Object
+
+Return:
+    updated canvas element with modified tags -> HTMLCanvasElement
+*/
 function addTextToCanvas(canvas,textObj){
     const ctx = canvas.getContext('2d')
     const fontSize = 20
@@ -330,6 +365,12 @@ function displayNodeDetails(displayNode,nodeInfo,canvas){
     }
 }
 
+/*
+After the node is no longer being hovered over, delete the canvas to remove the information
+
+Args:
+    canvas -> HTMLCanvasElement
+*/
 function killNodeDetails(canvas){
     if(canvas){
         mapBoard.container.removeChild(canvas)
@@ -345,6 +386,14 @@ function killNodeDetails(canvas){
     }
 }
 
+/*
+Add certain properties to a canvas element
+
+Args:
+    xPos -> float
+    yPos -> float
+    canvas -> HTMLCanvasElement
+*/
 function defineCanvasProps(xPos,yPos,canvas){
     canvas.classList.add('point-canvas')
     canvas.width = 15
@@ -358,6 +407,12 @@ function defineCanvasProps(xPos,yPos,canvas){
     canvas.setAttribute("draggable",true)
 }
 
+/*
+Creates a new canvas and adds to the container for ease of removal of added content
+
+Return:
+    the canvas element with updated properties -> HTMLCanvasElement
+*/
 function createCanvas(){
     const newCanvas = document.createElement('canvas')
     newCanvas.id = `algo-canvas`
@@ -368,6 +423,9 @@ function createCanvas(){
     return newCanvas
 }
 
+/*
+Creates the div for map
+*/
 function generatePlane(){
     const newDiv = document.createElement('div')
     newDiv.id = 'algo-div'
@@ -375,11 +433,25 @@ function generatePlane(){
     mapBoard.container.appendChild(newDiv)
 }
 
+/*
+Takes a canvas representing some node and updates it position on the screen
+
+Args:
+    xPos -> float
+    yPos -> float
+    canvas -> HTMLCanvasElement
+*/
 function moveNode(xPos,yPos,canvas){
     canvas.style.top = `${yPos-7.5}px`
     canvas.style.left = `${xPos-7.5}px`
 }
 
+/*
+Adds a drag handler for the start/end point canvases for drag capability
+
+Args:
+    canvas -> HTMLCanvasElement
+*/
 function setDragHandler(canvas){
     canvas.addEventListener("drag",(event)=>{
         const mouseX = event.clientX
@@ -388,6 +460,12 @@ function setDragHandler(canvas){
     })
 }
 
+/*
+Once the node canvas is released we want to find the node in the graph closest to the position of the canvas on the screen and lock the canvas onto that position
+
+Args:
+    canvas -> HTMLCanvasElement
+*/
 function setDragEndHandler(canvas){
     canvas.addEventListener("dragend",(event)=>{
         const mouseX = event.clientX
@@ -424,6 +502,15 @@ function setDragEndHandler(canvas){
     })
 }
 
+/*
+Add the handlers to the node canvas
+
+Args:
+    getNode -> getter function for node
+    getInfo -> getter function for node information
+    getNodeCanvas -> getter function for node canvas
+    getInfoCanvas -> getter function for info canvas
+*/
 function setNodeInfoHandler(getNode,getInfo,getNodeCanvas,getInfoCanvas){
     const nodeCanvas = getNodeCanvas()    
     nodeCanvas.addEventListener("mouseover", (event) =>{
@@ -434,7 +521,12 @@ function setNodeInfoHandler(getNode,getInfo,getNodeCanvas,getInfoCanvas){
     })
 }
 
+/*
+Gets the closest node on the graph to the mouse position of the user's click
 
+Args:
+    event -> MouseEvent
+*/
 function getNearestNode(event){  
     if(!mapDrawn){
         return
@@ -494,18 +586,52 @@ function getNearestNode(event){
     }
 }
 
+/*
+Converts latitude/longitude to coordinates that will fit on the screen
+
+Args:
+    lat -> float
+    long -> float
+    width -> float
+    height -> float
+
+Return:
+    lat/lon coordinates in screen space -> object
+*/
 function convertToScreenCoords(lat,long,width,height){
     const screenY = height - ((lat - bottomBound) / (topBound - bottomBound)) * height
     const screenX = ((long - leftBound) / (rightBound - leftBound)) * width
     return {screenX,screenY}
 }
 
+/*
+Converts screen coordinates to lat/lon coordinates
+
+Args:
+    xPos -> float
+    yPos -> float
+    width -> float
+    height -> float
+
+Return:
+    lat/lon coordinates -> object
+*/
 function convertToMapCoords(xPos,yPos,width,height){
     const longitude = ((xPos/width)*(rightBound-leftBound))+leftBound
     const latitude = (((height-yPos)/height)*(topBound-bottomBound))+bottomBound
     return {longitude,latitude}
 }
 
+/*
+Draws a line between two nodes connecting them symbolizing a rode
+
+Args:
+    canvas -> HTMLCanvasElement
+    startNode -> Node object
+    endNode -> Node object
+    color -> string
+    delay -> float
+*/
 function drawPath(canvas,startNode,endNode,color,delay){
     const ctx = canvas.getContext('2d')
     if(startNode && endNode){
@@ -523,7 +649,13 @@ function drawPath(canvas,startNode,endNode,color,delay){
     }
 }
 
+/*
+Draw a circle on the screen
 
+Args:
+    radius -> float
+    canvas -> HTMLCanvasElement
+*/
 function drawCircle(radius,canvas){
     const ctxCircle = canvas.getContext('2d')
     ctxCircle.beginPath()
@@ -536,7 +668,12 @@ function drawCircle(radius,canvas){
     ctxCircle.stroke()
 }
 
+/*
+Draws lines between each connected node drawing a grid of interconnecting roads
 
+Args:
+    startNode -> Node Object
+*/
 function drawMap(startNode) {
     let drawnNodes = new Set();
     let drawnPaths = new Set();
@@ -562,25 +699,54 @@ function drawMap(startNode) {
             }
         }
     }
+    console.log("ole")
     setTimeout(()=>{
         mapDrawn = true
     },100)
 }
             
+/*
+Calculate the Euclidean distance between two points
 
+Args:
+    srcX -> float
+    srcY -> float
+    dstX -> float
+    dstY -> float
+
+Return:
+    distance between two points -> float
+*/
 function getDistance(srcX,srcY,dstX,dstY){
     let x = (srcX - dstX) * (srcX - dstX)
     let y = (srcY - dstY) * (srcY - dstY)
     return Math.sqrt(x + y)
 }
 
+/*
+Gets a random integer between a minimum and a maximum
+
+Args:
+    min -> int
+    max -> int
+
+Return:
+    random int between min and max inclusive -> int
+*/
 function getRandomInt(min, max) {
     min = Math.ceil(min);
     max = Math.floor(max);
     return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-function addEdge(startId,endId,key){
+/*
+Adds an edge in the graph to some node and its corresponding edge node
+
+Args:
+    startId -> string
+    endId -> string
+*/
+function addEdge(startId,endId){
     let startNode = mapInfo.nodes[startId]
     let endNode = mapInfo.nodes[endId]
 
@@ -603,6 +769,9 @@ function addEdge(startId,endId,key){
     mapInfo.graph[endId].push({node: startNode, weight: weight})
 }
 
+/*
+Initializes the nodes distances for A* algorithm
+*/
 function initializeDistances(){
     Object.values(mapInfo.nodes).forEach(node =>{
         node.distance = Infinity
@@ -610,6 +779,13 @@ function initializeDistances(){
     })
 }
 
+/*
+After we have determined the shortest path using A*, we work backwards from the end node to the start node and
+draw a red path between each node in the path we found
+
+Args:
+    canvas -> HTMLCanvasElement
+*/
 function drawShortestPath(canvas){
     const ctx = canvas.getContext('2d')
     let path = []
@@ -625,6 +801,14 @@ function drawShortestPath(canvas){
 
 }
 
+/*
+A* shortest path algorithm that uses Euclidean distance as the heuristic which will skew the search for nodes towards
+the destination versus dijkstras which will check every node
+
+Args:
+    startNode -> Node Object
+    endNode -> Node Object
+*/
 function aStar(startNode,endNode){
     //A* heuristic - Euclidean Distance
     function potential(node){
@@ -666,10 +850,31 @@ function aStar(startNode,endNode){
     drawShortestPath(algoCanvas)
 }
 
+/*
+Weighted sum of the components of two 2D vectors
+
+Args:
+    v -> array of floats (vector)
+    w -> array of floats (vector)
+
+Return:
+    dot product -> float
+*/
 function dotProduct(v,w){
     return v[0]*w[0] + v[1]*w[1]
 }
 
+/*
+Gets the perpendicular distance of two points to some line
+
+Args:
+    v -> array of floats (vector)
+    node -> Node Object
+    start -> Node Object
+
+Return: 
+    orthogonal distance -> float
+*/
 function orthogonalDistance(v,node,start){
     const wX = node.long - start.long
     const wY = node.lat - start.lat
@@ -680,7 +885,13 @@ function orthogonalDistance(v,node,start){
     return getDistance(Number(node.long),Number(node.lat),cX,cY)
 }
 
+/*
+Algorithm to reduce the amount of nodes on some node collection while maintaining the geometry the nodes create together
 
+Args:
+    nodes -> array of nodes
+    epsilon -> float
+*/
 function douglasPeucker(nodes, epsilon){
     //console.log(mapInfo.nodes["5742573759"])
     if(nodes.length < 3){
@@ -727,7 +938,13 @@ function douglasPeucker(nodes, epsilon){
 
 }
 
+/*
+Deletes a two-way connection of some edge
 
+Args:
+    prunedRef -> string
+    modifyRef -> string
+*/
 function removeEdge(prunedRef,modifyRef){
     const neighbors = mapInfo.graph[modifyRef]
     for(let i = 0; i < neighbors.length; i++){
@@ -738,6 +955,7 @@ function removeEdge(prunedRef,modifyRef){
 }
 
 //prunedNodes -> [prunedNode,prevNode,nextNode]
+
 function optimizeGraph(){
     const prunedQueue = mapInfo.prunedNodes
     for(let i = 0; i < prunedQueue.length; i++){
